@@ -1,33 +1,42 @@
 /**
  * Created by 최예찬 on 2016-12-20.
  */
+
+"use strict";
+
 var mongoose = require('mongoose');
 var crypto = require('crypto');
 var joosik = require('../joosik');
 
+var jsonfile = require('jsonfile');
+jsonfile.spaces = 4;
+
+var registerKeys = jsonfile.readFileSync('./register-key.json');
+
 var schema = new mongoose.Schema({
     name: {
         type: String,
-        require: true
+        required: true
     },
     schoolNum: {
         type: String,
-        required:true
+        required: true
     },
     id: {
         type: String,
-        require: true
+        required: true
     },
     salt: {
         type: String,
-        require: true,
+        required: true,
     },
     hash: {
         type: String,
-        require: true
+        required: true
     },
-    token: {
-        type: String
+    key: {
+        type: String,
+        required:true
     },
     coin: {
         type: Number,
@@ -63,28 +72,36 @@ schema.methods.equalsPassword = function (password) {
     return hash == this.hash;
 };
 
-schema.methods.genToken = function () {
-    return new Promise((resolved, reject)=> {
-        crypto.randomBytes(48, (err, buffer) => {
-            if (err) reject(err);
-            this.token = this.id + buffer.toString('hex');
-            resolved(this.save());
-        });
-    });
-};
-
 /**
  * @param {string} name
  * @param {string} schoolNum
  * @param {string} id
  * @param {string} password
+ * @param {string} registerKey
  */
-schema.statics.register = function (name, schoolNum, id, password) {
+schema.statics.register = function (name, schoolNum, id, password, registerKey) {
 
     return this.findOne({id: id}).exec()
         .then(user => {
             if (user) throw {
                 message: "이미 존재하는 유저입니다.",
+                statusCode: 409,
+            };
+            if (registerKeys.indexOf(registerKey) == -1) throw {
+                message: "가입 키가 존재하지 않습니다.",
+                statusCode: 409,
+            };
+
+            return this.findOne({key: registerKey}).exec();
+        }, err => {
+            throw {
+                message: "오류가 발생했습니다: " + err.message,
+                statusCode: 500
+            };
+        }).then(user => {
+
+            if (user) throw {
+                message: "이미 그 가입 키가 사용되었습니다.",
                 statusCode: 409,
             };
             else {
@@ -96,7 +113,8 @@ schema.statics.register = function (name, schoolNum, id, password) {
                     schoolNum: schoolNum,
                     id: id,
                     salt: salt,
-                    hash: hashedPass
+                    hash: hashedPass,
+                    key: registerKey
                 }).save();
             }
         }, err => {
@@ -143,21 +161,51 @@ schema.statics.removeUser = function (id) {
 
 
 /**
- * @param {string} id
+ * @param {mongoose.Schema.Types.ObjectId} id
  * @param {number} joosikNum,
  * @param {number} size
  */
 schema.statics.buyJoosik = function (id, joosikNum, size) {
+    return this.findById(id).exec()
+        .then(user => {
+            if (!user) throw {
+                message: "아이디가 존재하지 않습니다.",
+                statusCode: 401
+            };
+            else {
+                var obj = {};
+                var joosikKey = "joosik" + joosikNum;
+                obj[joosikKey] = size;
+                obj.coin = -(joosik.getPriceAndDelta(joosikNum).price * size);
 
+                if(user[joosikKey] + obj[joosikKey] < 0) throw {
+                    message: "주식을 팔 수 없습니다. 소지 주식이 부족합니다.",
+                    statusCode: 400
+                };
+                if(user[joosikKey] + obj[joosikKey] > 7) throw {
+                    message: "주식을 살 수 없습니다. 소지 주식의 한도를 넘었습니다.",
+                    statusCode: 400
+                };
+                if(user.coin + obj.coin < 0) throw {
+                    message: "주식을 살 수 없습니다. 소지금이 부족합니다.",
+                    statusCode: 400
+                };
 
-        var obj = {};
-        obj["joosik" + joosikNum] = size;
-        obj.coin = joosik.
-        return this.findByIdAndUpdate(id, {
-            $set: obj,
-            $inc: {
-                money: -100
+                if(joosik.getExtra(joosikNum) < obj[joosikKey]) throw {
+                    message: "주식을 살 수 없습니다. 시장에 존재하는 주식의 양을 초과했습니다.",
+                    statusCode: 400
+                };
+
+                joosik.addExtra(joosikNum, -obj[joosikKey]);
+                return this.findByIdAndUpdate(id, {
+                    $inc: obj
+                });
             }
+        }, err => {
+            throw {
+                message: "오류가 발생했습니다: " + err.message,
+                statusCode: 500
+            };
         });
 };
 

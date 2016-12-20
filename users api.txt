@@ -1,0 +1,30 @@
+에러 시 HTTP 코드와 함께 사유를 response로 날려줌.
+코드 400은 주로 파라미터 문제
+
+~
+POST /users
+파라미터 name(string), schoolNum(string, ex:20420), id(string), password(string), registerKey(string)
+
+가입 시도. 성공 시 유저 정보 반환(유저 스키마는 ./mongo/user.js 확인)
+
+코드 409 : 존재하는 유저임, 또는 registerKey가 존재하지 않거나 이미 썼거나
+~
+
+~
+POST /users/login
+파라미터 email(string), password(string)
+
+로그인 시도. 성공 시 200코드와 메시지 반환, 로그인은 세션에 저장됨
+
+코드 401 : 로그인 실패
+~
+
+~
+GET /users/me (로그인 세션 필요)
+파라미터 없음
+유저 정보 반환
+
+POST /users/logout (로그인 세션 필요)
+파라미터 없음
+로그아웃 처리. 세션 날아감
+

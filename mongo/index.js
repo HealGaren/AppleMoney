@@ -9,4 +9,5 @@ db.once('open', function(){
 
 module.exports = {
     User: require('./user'),
+    Log: require('./log'),
 };
